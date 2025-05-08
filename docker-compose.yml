@@ -1,0 +1,32 @@
+services:
+  rutorrent-vpn-test:
+      volumes:
+          - /tmp/rutorrent/rutorrent-vpn:/config
+          - /etc/localtime:/etc/localtime:ro
+          - /tmp/rutorrent/downloads:/downloads
+          - /tmp/rutorrent/data:/data
+      ports:
+          - 9080:9080
+      environment:
+          - VPN_ENABLED=no
+          - VPN_PROV=airvpn
+          - VPN_CLIENT=wireguard
+          - STRICT_PORT_FORWARD=no
+          - ENABLE_PRIVOXY=no
+          - ENABLE_AUTODL_IRSSI=no
+          - ENABLE_RPC2=yes
+          - ENABLE_RPC2_AUTH=yes
+          - ENABLE_WEBUI_AUTH=no
+          - RPC2_USER=admin
+          - RPC2_PASS=gfdstrewtgbdxfrsbrd43242
+          - LAN_NETWORK=192.168.0.0/12
+          - NAME_SERVERS=10.128.0.1,84.200.69.80,37.235.1.174,1.1.1.1,37.235.1.177,84.200.70.40,1.0.0.1
+          - DEBUG=false
+          - PHP_TZ=Europe/Warsaw
+          - UMASK=002
+          - PUID=1000
+          - PGID=1000
+      sysctls:
+          - net.ipv4.conf.all.src_valid_mark=1
+      privileged: true
+      image: czacha994/rutorrentvpn:01042025

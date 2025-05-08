@@ -14,52 +14,21 @@ release_tag_name="${1//-[0-9][0-9]/}"
 OS_ARCH=$(cat /etc/os-release | grep -P -o -m 1 "(?=^ID\=).*" | grep -P -o -m 1 "[a-z]+$")
 if [[ ! -z "${OS_ARCH}" ]]; then
 	if [[ "${OS_ARCH}" == "arch" ]]; then
-		OS_ARCH="x86-64"
+		OS_ARCH="amd64"
 	else
-		OS_ARCH="aarch64"
+		OS_ARCH="arm64"
 	fi
 	echo "[info] OS_ARCH defined as '${OS_ARCH}'"
 else
-	echo "[warn] Unable to identify OS_ARCH, defaulting to 'x86-64'"
-	OS_ARCH="x86-64"
+	echo "[warn] Unable to identify OS_ARCH, defaulting to 'amd64'"
+	OS_ARCH="amd64"
 fi
-
-# custom
-####
-
-libtorrentps_package_name="libtorrent-ps.tar.xz"
-
-# download compiled libtorrent-ps (used by rtorrent-ps)
-rcurl.sh -o "/tmp/${libtorrentps_package_name}" "https://github.com/binhex/packages/raw/master/compiled/${OS_ARCH}/${libtorrentps_package_name}"
-
-# install libtorrent-ps
-pacman -U "/tmp/${libtorrentps_package_name}" --noconfirm
-
-rtorrentps_package_name="rtorrent-ps.tar.xz"
-
-# download compiled rtorrent-ps (cannot compile during docker build)
-rcurl.sh -o "/tmp/${rtorrentps_package_name}" "https://github.com/binhex/packages/raw/master/compiled/${OS_ARCH}/${rtorrentps_package_name}"
-
-# install rtorrent-ps
-pacman -U "/tmp/${rtorrentps_package_name}" --noconfirm
-
-# set tmux to use 256 colors (required by rtorrent-ps)
-echo 'set -g default-terminal "screen-256color"' > /home/nobody/.tmux.conf
-
-ffmpeg_package_name="ffmpeg-release-static.tar.xz"
-
-# download statically linked ffmpeg (used by rutorrent screenshots plugin)
-rcurl.sh -o "/tmp/${ffmpeg_package_name}" "https://github.com/binhex/packages/raw/master/static/${OS_ARCH}/ffmpeg/johnvansickle/${ffmpeg_package_name}"
-
-# unpack and move binaries
-mkdir -p "/tmp/unpack" && tar -xvf "/tmp/${ffmpeg_package_name}" -C "/tmp/unpack"
-mv /tmp/unpack/ffmpeg*/ff* "/usr/bin/"
 
 # pacman packages
 ####
 
 # define pacman packages
-pacman_packages="git nginx php-fpm rsync openssl tmux mediainfo php-geoip zip libx264 libvpx xmlrpc-c sox python-pip"
+pacman_packages="git nginx php-fpm rsync openssl tmux mediainfo php-geoip zip libx264 libvpx xmlrpc-c sox python-pip libxcrypt-compat"
 
 # install compiled packages using pacman
 if [[ ! -z "${pacman_packages}" ]]; then
@@ -83,8 +52,29 @@ package_name="python2.tar.zst"
 # download compiled python2 (removed from AOR)
 rcurl.sh -o "/tmp/${package_name}" "https://github.com/binhex/packages/raw/master/compiled/${OS_ARCH}/${package_name}"
 
-# install python2
-pacman -U "/tmp/${package_name}" --noconfirm
+ffmpeg_package_name="ffmpeg-release-static.tar.xz"
+
+# download statically linked ffmpeg (used by rutorrent screenshots plugin)
+rcurl.sh -o "/tmp/${ffmpeg_package_name}" "https://github.com/binhex/arch-packages/raw/master/static/${OS_ARCH}/ffmpeg/johnvansickle/${ffmpeg_package_name}"
+
+# unpack and move ffmpeg binaries
+mkdir -p "/tmp/unpack" && tar -xvf "/tmp/${ffmpeg_package_name}" -C "/tmp/unpack"
+mv /tmp/unpack/ffmpeg*/ff* "/usr/bin/"
+
+# github release - libtorrent
+####
+
+# download and compile libtorrent
+# #include <algorithm> is to fix build error
+# github.sh --install-path '/tmp/libtorrent/src' --github-owner 'rakshasa' --github-repo 'rtorrent' --download-assets "libtorrent.*tar.gz" --query-type 'release' --compile-src "cd /tmp/libtorrent/src/libtorrent* && sed -i '1s/^/#include <algorithm>\n/' src/torrent/utils/directory_events.cc && sed '/AM_PATH_CPPUNIT/d' -i configure.ac && autoreconf -f -i && export CXXFLAGS=\"${CXXFLAGS} -fno-strict-aliasing\" && ./configure --prefix=/usr --disable-debug && make && make DESTDIR='/' install"
+github.sh --install-path '/tmp/libtorrent/src' --github-owner 'rakshasa' --github-repo 'libtorrent' --query-type 'branch' --download-branch 'master' --compile-src "cd /tmp/libtorrent/src/ && sed '/AM_PATH_CPPUNIT/d' -i configure.ac && autoreconf -f -i && export CXXFLAGS=\"${CXXFLAGS} -fno-strict-aliasing\" && ./configure --prefix=/usr --disable-debug && make && make DESTDIR='/' install"
+
+# github release - rtorrent
+####
+
+# download and compile rtorrent
+# github.sh --install-path '/tmp/rtorrent/src' --github-owner 'rakshasa' --github-repo 'rtorrent' --download-assets "rtorrent.*tar.gz" --query-type 'release' --compile-src "cd /tmp/rtorrent/src/rtorrent* && sed '/AM_PATH_CPPUNIT/d' -i configure.ac && autoreconf -f -i && export CXXFLAGS=\"${CXXFLAGS} -fno-strict-aliasing\" && ./configure --prefix=/usr --disable-debug --with-xmlrpc-tinyxml2 && make && make DESTDIR='/' install"
+github.sh --install-path '/tmp/rtorrent/src' --github-owner 'rakshasa' --github-repo 'rtorrent' --query-type 'branch' --download-branch 'master' --compile-src "cd /tmp/rtorrent/src/ && sed '/AM_PATH_CPPUNIT/d' -i configure.ac && autoreconf -f -i && export CXXFLAGS=\"${CXXFLAGS} -fno-strict-aliasing\" && ./configure --prefix=/usr --disable-debug --with-xmlrpc-tinyxml2 && make && make DESTDIR='/' install"
 
 # github release - rutorrent
 ####
@@ -92,26 +82,11 @@ pacman -U "/tmp/${package_name}" --noconfirm
 # download rutorrent
 github.sh --install-path "/usr/share/webapps/rutorrent" --github-owner "Novik" --github-repo "ruTorrent" --query-type "branch" --download-branch "master"
 
-# rutorrent plugin cloudflare requires python module 'cloudscraper', use pip to install (python-pip = python 3.x)
-pip install --ignore-installed cloudscraper
-
-# github release - pyrocore
-####
-
-# download pyrocore tools for rtorrent-ps
-git clone "https://github.com/pyroscope/pyrocore.git" "/opt/pyrocore" && cd "/opt/pyrocore"
+# install cloudscraper globally, bypassing PEP 668 restrictions
+pip install --break-system-packages --ignore-installed cloudscraper
 
 # manually create folder, used to create symlinks to pyrocore binaries
 mkdir -p "/home/nobody/bin"
-
-# run install script which updates to github head and then installs python modules using pip
-./update-to-head.sh "/usr/bin/python2"
-
-# install additional python modules using pip (pip laid on disk as part of pyrocore) - required
-# for pycore torque utility
-# note we also require gcc to compile python module psutil
-pacman -S --needed gcc --noconfirm
-/opt/pyrocore/bin/pip install --ignore-installed -r "/opt/pyrocore/requirements-torque.txt"
 
 # github master branch - autodl-irssi
 ####
